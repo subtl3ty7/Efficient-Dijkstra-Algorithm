@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<head>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://d3js.org/d3.v4.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.1/dist/leaflet.css"
+          integrity="sha512-Rksm5RenBEKSKFjgI3a41vrjkw4EVPlJ3+OiI65vTjIdo9brlAacEuKOiQ5OFh7cOI1bkDwLqdLw3Zg0cRJAAQ=="
+          crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.3.1/dist/leaflet.js"
+            integrity="sha512-/Nsx9X4HebavoBvEBuyp3I7od5tA0UzAxs+j83KgC8PU0kgB4XiK4Lfe4y4cgBtaRJQEIFCW+oC506aPT2L1zw=="
+            crossorigin=""></script>
+    <style>
+        #mapid { height: 800px; width : 1200px;}
+        .legend {
+            line-height: 18px;
+            color: #555;
+            background-color: #eee;
+            padding : 5px;
+        }
+        .legend div {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+<title>Dijkstra Evaluation</title>
+<h1>Efficient Dijkstra Evaluation</h1>
+<input id="csv" type="file">
+<div id="plot1"></div>
+<div id="mapid"></div>
+<script>
+    String.prototype.replaceAll = function(search, replacement) {
+        var target = this;
+        return target.replace(new RegExp(search, 'g'), replacement);
+    };
+
+    plotMap = function(data) {
+        var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        });
+
+        var osm_de = L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        });
+
+        var map = L.map('mapid', {center : [48.2082, 16.3738], zoom : 11, layers : [osm,osm_de]});
+        osm.addTo(map);
+
+        var routeStyleDist = {
+            "color": "#4488bb",
+            "weight": 6,
+            "opacity": 0.9
+        };
+
+        var routeStyleTime = {
+            "color": "#44bb88",
+            "weight": 6,
+            "opacity": 0.9
+        };
+
+        var baseMaps = {
+            "OSM" : osm,
+            "OSM DE" : osm_de
+        }
+
+        var distRoutes = {}
+        data.forEach(function(d) {
+            if(d.type.metric == "distance" && d.type.name == "Fibonacci_Heap") {
+                var route = L.polyline(d.path.p);
+                route.setStyle(routeStyleDist);
+                distRoutes[d.type.id] = route;
+            }
+        });
+
+        var finishIcon = L.icon({
+            iconUrl: 'finish_small.png',
+
+            iconSize:     [64, 56], // size of the icon
+            iconAnchor:   [2, 56], // point of the icon which will correspond to marker's location
+        });
+
+        var routes = {}
+        data.forEach(function(d) {
+            if(d.type.metric == "time" && d.type.name == "Fibonacci_Heap") {
+                var sm = L.marker(d.path.p[0]);
+                var tm = L.marker(d.path.p[d.path.p.length - 1], {icon : finishIcon});
+                var route = L.polyline(d.path.p);
+                route.setStyle(routeStyleTime);
+                routes[d.type.id] = L.layerGroup([sm, tm, distRoutes[d.type.id], route]);
+            }
+        });
+
+        L.control.layers(baseMaps, routes).addTo(map);
+        routes["0"].addTo(map);
+
+        var legend = L.control({position: 'bottomright'});
+        legend.onAdd = function (map) {
+
+            var div = L.DomUtil.create('div', 'info legend'),
+                grades = [routeStyleDist.color, routeStyleTime.color],
+                labels = ["Distance", "Time"];
+
+            // loop through our density intervals and generate a label with a colored square for each interval
+            for (var i = 0; i < grades.length; i++) {
+                div.innerHTML +=
+                    '<div class="legend-box" style="background-color: ' + grades[i] + '";"></div>' + labels[i] + '<br>';
+            }
+
+            return div;
+        };
+
+        legend.addTo(map);
+    };
+
+    plotQueues = function(data) {
+        var aggregated = d3.nest()
+        .key(function(d) {return d.type.name;})
+        .key(function(d) {return d.length;})
+        .rollup(function(leaves) {
+             return d3.mean(leaves, function(d) {
+                return d.time;
+             })
+        }).entries(data);
+
+        function to_trace(d) {
+            sorted = d.values.sort(function(a,b) {
+                return a.key < b.key
+            });
+            xs = sorted.map(kv => kv.key)
+            ys = sorted.map(kv => kv.value/1000000)
+            return{
+                x : xs,
+                y : ys,
+                mode : 'markers',
+                type : 'scatter',
+                name : d.key
+            }
+        };
+
+        console.log(aggregated);
+
+        var data = aggregated.map(to_trace);
+        var layout = {
+            title : 'Path Length vs Time',
+            xaxis : {
+                title : 'Path Length'
+            },
+            yaxis : {
+                title : 'Time in ms'
+            }
+        };
+
+        Plotly.newPlot('plot1', data, layout, {modeBarButtonsToRemove: ['sendDataToCloud']});
+    };
+
+	var fileInput = document.getElementById("csv"),
+
+	readFile = function () {
+	    var reader = new FileReader();
+	    reader.onload = function () {
+        	var data = d3.csvParse(reader.result, function(d) {
+        		return {
+					id : +d.id,
+					name : d.name,
+					type : JSON.parse(d.instance_type.replaceAll("'", "\"")),
+					time : +d.ns,
+					length : +d.length,
+					path : JSON.parse(d.path.replaceAll("'", "\""))
+				};
+        	});
+
+        	console.log(data);
+
+            plotQueues(data);
+            plotMap(data);
+		};
+
+		reader.readAsBinaryString(fileInput.files[0]);
+	};
+	fileInput.addEventListener('change', readFile);
+</script>
+</body>
+</html>

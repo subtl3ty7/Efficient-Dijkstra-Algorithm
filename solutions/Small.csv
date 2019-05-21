@@ -1,0 +1,4 @@
+id,name,instance_type,ns,length,path
+0,Dijkstra,"{'id' : 0, 'metric' : 'distance', 'name' : 'MinHeap'}",1166900,3,"{'p' : [1,3,6,5]}"
+1,Dijkstra,"{'id' : 0, 'metric' : 'distance', 'name' : 'Fibonacci_Heap'}",138100,3,"{'p' : [1,3,6,5]}"
+2,Dijkstra,"{'id' : 0, 'metric' : 'distance', 'name' : 'Simple_Queue'}",124600,3,"{'p' : [1,3,6,5]}"
